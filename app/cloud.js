@@ -139,6 +139,20 @@
     }
   }
 
+  async function changeAndReload(name, params) {
+    await window.cloudBridge.refreshRevision();
+    const next = await window.cloudBridge.rpc(name, { expected_revision: revision, ...params });
+    if (!Number.isSafeInteger(next)) throw new Error('Сервер вернул некорректную версию графика.');
+    if (pending || saving || stopped) {
+      stopped = true;
+      resolveButton.hidden = false;
+      retryButton.hidden = false;
+      setStatus('Действие выполнено, но в этом окне есть другие изменения. Скачайте JSON и обновите график.', true);
+      return;
+    }
+    location.reload();
+  }
+
   window.cloudBridge = {
     save(payload) {
       if (!session || revision === null) return;
@@ -169,17 +183,10 @@
       revision = row.revision;
     },
     async unconfirm(entryId) {
-      await this.refreshRevision();
-      const next = await this.rpc('unconfirm_vacation_period', { expected_revision: revision, entry_id: entryId });
-      if (!Number.isSafeInteger(next)) throw new Error('Сервер вернул некорректную версию графика.');
-      if (pending || saving || stopped) {
-        stopped = true;
-        resolveButton.hidden = false;
-        retryButton.hidden = false;
-        setStatus('Утверждение снято, но в этом окне есть другие изменения. Скачайте JSON и обновите график.', true);
-        return;
-      }
-      location.reload();
+      return changeAndReload('unconfirm_vacation_period', { entry_id: entryId });
+    },
+    async discardSelection(invitationId) {
+      return changeAndReload('discard_vacation_selection', { p_id: invitationId });
     },
   };
 

@@ -74,6 +74,7 @@ body::before { background: linear-gradient(180deg, #e9f1fc, #f3f6fa 380px); }
 .feedback div.err { color: #a51d35; }
 .feedback div.ok { color: #116344; }
 .verdict.top, .bd.pos b, .done-mark { color: #116344; }
+.done-mark.error { color: #a51d35; background: #fff0f2; border-color: #e7a4af; }
 .verdict.mid, .tag.warn { color: #855500; }
 .verdict.low, .tag.bad, .bd.neg b, .period-row .rm, .busy-item i, .tbl .del:hover { color: #a51d35; }
 .tag, .totals .gift { color: #126b83; }
@@ -89,3 +90,34 @@ body::before { background: linear-gradient(180deg, #e9f1fc, #f3f6fa 380px); }
   .gantt { display: none; }
   .mobile-schedule { display: block; }
 }
+
+/* ????? ?????? ? ?????????? ?????????? */
+.zoom-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.zoom-controls button { min-width:36px; min-height:36px; border:1px solid #cbd8ec; border-radius:9px; color:#2858a5; background:#fff; font-size:20px; cursor:pointer; }
+.zoom-controls button:disabled { opacity:.35; cursor:default; }
+.zoom-controls strong { min-width:150px; text-align:center; }
+.zoom-controls > span { color:#64748b; font-size:12px; }
+.zoom-scroll { overflow-x:auto; }
+.zoom-chart { min-width:650px; }
+.zoom-row { display:grid; grid-template-columns:150px minmax(0,1fr); min-height:34px; align-items:center; border-bottom:1px solid #e9eef6; }
+.zoom-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:6px; }
+.zoom-heading { color:#667891; font-size:11px; }
+.zoom-axis { position:relative; height:25px; }
+.zoom-axis span { position:absolute; top:5px; }
+.zoom-track { position:relative; height:24px; background:repeating-linear-gradient(90deg,#eef3fa 0,#eef3fa 1px,transparent 1px,transparent 8.333%); }
+.zoom-bar { position:absolute; top:4px; height:16px; background:#76a8f5; border-radius:5px; min-width:3px; }
+.zoom-bar.confirmed { background:#398c78; }
+#gantt[hidden] { display:none; }
+.pick-reference { display:grid; gap:16px; margin-top:20px; }
+.reference-card { padding:20px; }
+.reference-card summary { cursor:pointer; font-weight:700; font-size:18px; }
+.reference-card li { margin:8px 0; }
+.reference-months { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; }
+.reference-month { border:1px solid #e1eaf5; border-radius:12px; padding:12px; }
+.reference-month h4 { margin:0 0 10px; }
+.reference-days { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; text-align:center; font-size:12px; }
+.reference-days span { padding:5px 0; border-radius:5px; }
+.reference-days b { color:#758399; font-size:10px; }
+.reference-days .calendar-holiday { background:#ffe5e8; color:#b42e43; }
+.reference-days .calendar-weekend, .reference-days .calendar-transferred { background:#e8f1ff; color:#315f9f; }
+.reference-days .calendar-workSaturday { background:#fff2d7; }

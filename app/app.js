@@ -6,7 +6,6 @@
 
 const D = window.APP_DATA;
 const CAL = D.calendar;
-const TODAY_ISO = '2026-11-17';
 
 const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const MONTHS_FULL = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -27,6 +26,7 @@ const safeUrl = (value) => {
   catch (error) { return '#'; }
 };
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const TODAY_ISO = iso(new Date());
 const parse = (s) => new Date(s + 'T00:00:00');
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
@@ -668,7 +668,10 @@ function addEntry() {
   toast(`Добавлено: ${emp.short}, ${fmtRange(s, e)} — ${c.vac} дн.${c.holidays ? ' + ' + c.holidays + ' пр.д' : ''}`);
 }
 
+let refreshTimeline;
 function renderGantt() {
+  if (!refreshTimeline) refreshTimeline = window.vacationTimeline($('#managerTimeline'), () => state.entries.map(e => ({ ...e, name: (D.employees.find(p => p.id === e.empId) || {}).short || e.empId })));
+  else refreshTimeline();
   const { ordered, head } = buildRanking();
   const rows = head ? [head, ...ordered] : ordered;
   const hol = CAL.holidays.map((h) => DAY_IN_YEAR(h) / 365 * 100);
@@ -741,7 +744,7 @@ function renderTable() {
         <td><span class="badge ${x.status === 'confirmed' ? 'ok' : (bad ? 'bad' : 'draft')}">${x.status === 'confirmed' ? 'утверждён' : 'черновик'}</span></td>
         <td style="text-align:right">${x.status === 'confirmed' && window.APP_CLOUD_STATE
           ? `<button class="ghost" data-unconfirm="${escapeHtml(x.id)}">Снять утверждение</button>`
-          : `<button class="del" data-del="${escapeHtml(x.id)}" title="Удалить">×</button>`}</td>
+          : `<button class="del" data-del="${escapeHtml(x.id)}" title="Удалить" aria-label="Удалить период">×</button>`}</td>
       </tr>`;
     }).join('');
   }
@@ -892,7 +895,7 @@ async function api(path, opts = {}) {
   if (window.APP_CLOUD_STATE) {
     if (path === '/api/tokens' && !opts.method) {
       const tokens = await window.cloudBridge.rpc('list_vacation_invites');
-      return { tokens: tokens.map((t) => ({ ...t, token: t.status === 'open' ? issuedCloudTokens.get(`${t.empId}:${t.cycle}`) : null })) };
+      return { tokens: tokens.map((t) => ({ ...t, token: t.status === 'open' ? issuedCloudTokens.get(t.id) : null })) };
     }
     if (path === '/api/tokens' && opts.method === 'POST') {
       const p = JSON.parse(opts.body);
@@ -901,7 +904,8 @@ async function api(path, opts = {}) {
         p_employee_id: p.empId, p_cycle: p.cycle, p_min_days: p.minDays, p_max_days: p.maxDays,
         p_months: p.months, p_comment: p.comment, p_expires_days: p.expiresDays,
       });
-      issuedCloudTokens.set(`${p.empId}:${p.cycle}`, result.token);
+      if (!result.id || !result.token) throw new Error('Сервер вернул неполные данные ссылки.');
+      issuedCloudTokens.set(result.id, result.token);
       return result;
     }
     if (path.startsWith('/api/tokens/') && opts.method === 'DELETE') {
@@ -1075,7 +1079,8 @@ async function renderTokens() {
       <td><div class="token-actions">
         ${t.status === 'open' && t.token ? `<button class="ghost" data-copy="${escapeHtml(t.token)}">ссылка</button>` : ''}
         ${t.status === 'submitted' ? `<button class="ghost" data-apply="${escapeHtml(t.id || t.token)}">в график</button>` : ''}
-        ${t.status !== 'revoked' && (!window.APP_CLOUD_STATE || t.status !== 'submitted') ? `<button class="ghost danger" data-revoke="${escapeHtml(t.id || t.token)}">×</button>` : ''}
+        ${t.status === 'submitted' && window.APP_CLOUD_STATE ? `<button class="ghost danger" data-discard="${escapeHtml(t.id)}">Отклонить</button>` : ''}
+        ${t.status !== 'revoked' && (!window.APP_CLOUD_STATE || t.status !== 'submitted') ? `<button class="ghost danger" data-revoke="${escapeHtml(t.id || t.token)}" aria-label="Погасить ссылку">×</button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
@@ -1087,6 +1092,12 @@ async function renderTokens() {
     copyText(msg);
   }));
   $$('[data-apply]').forEach((b) => b.addEventListener('click', () => applyToken(b.dataset.apply)));
+  $$('[data-discard]').forEach((b) => b.addEventListener('click', async () => {
+    if (!window.confirm('Отклонить выбор и погасить ссылку? Связанный черновик будет удалён.')) return;
+    b.disabled = true;
+    try { await window.cloudBridge.discardSelection(b.dataset.discard); }
+    catch (e) { b.disabled = false; toast(e.message || 'Не удалось отклонить выбор', true); }
+  }));
   $$('[data-revoke]').forEach((b) => b.addEventListener('click', () => revokeToken(b.dataset.revoke)));
 }
 
@@ -1246,7 +1257,7 @@ function bindUi() {
   // табы
   $$('#tabs .tab').forEach((b) => b.addEventListener('click', () => {
     state.tab = b.dataset.tab;
-    $$('#tabs .tab').forEach((x) => x.classList.toggle('active', x === b));
+    $$('#tabs .tab').forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-pressed', String(x === b)); });
     $$('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
     saveState(false);
   }));
@@ -1351,7 +1362,7 @@ bindUi();
 if (state.tab && state.tab !== 'planner') {
   const b = $(`#tabs .tab[data-tab="${state.tab}"]`);
   if (b) {
-    $$('#tabs .tab').forEach((x) => x.classList.toggle('active', x === b));
+    $$('#tabs .tab').forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-pressed', String(x === b)); });
     $$('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + state.tab));
   }
 }

@@ -351,7 +351,7 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   background: linear-gradient(140deg, #a78bfa, #7c3aed);
   box-shadow: 0 6px 16px -8px rgba(139, 92, 246, .95);
   transform-origin: left center; animation: grow .6s cubic-bezier(.2, .9, .2, 1) both;
-  cursor: pointer; transition: filter .2s, transform .2s;
+  cursor: default; transition: filter .2s, transform .2s;
 }
 .gantt-bar:hover { filter: brightness(1.2); transform: translateY(-1px); }
 .gantt-bar.confirmed { background: linear-gradient(140deg, #34d399, #059669); box-shadow: 0 6px 16px -8px rgba(16, 185, 129, .9); }

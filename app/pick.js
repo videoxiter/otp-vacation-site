@@ -16,6 +16,12 @@ const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 
 const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
 const fmtDay = (s) => { const d = parse(s); return d.getDate() + ' ' + MONTHS_GEN[d.getMonth()]; };
 const fmtRange = (a, b) => fmtDay(a) + ' — ' + fmtDay(b);
+function intersectsMonth(range, month) {
+  const prefix = `2027-${String(month).padStart(2, '0')}-`;
+  const first = prefix + '01';
+  const last = prefix + String(new Date(2027, month, 0).getDate()).padStart(2, '0');
+  return range.start <= last && range.end >= first;
+}
 const fmtDateRu = (s) => (!s ? '—' : /(?:Z|[+-]\d{2}:\d{2})$/.test(s) ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(s)) : s.slice(0, 10).split('-').reverse().join('.'));
 const plural = (n, one, few, many) => {
   const a = Math.abs(n) % 100, b = a % 10;
@@ -64,7 +70,7 @@ async function load() {
 
 function renderError(title, text) {
   $('#screen').innerHTML = `<div class="glass center-card">
-    <div class="done-mark" style="background:rgba(251,113,133,.14);color:#fecdd3;border-color:rgba(251,113,133,.45)">!</div>
+    <div class="done-mark error">!</div>
     <h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div>`;
 }
 
@@ -168,7 +174,7 @@ function render() {
           ${MONTHS_SHORT.map((m, i) => {
             const mNum = i + 1;
             const allow = months.includes(mNum);
-            const busyMonth = (INFO.ranges || []).some((r) => parse(r.start).getMonth() + 1 === mNum);
+            const busyMonth = (INFO.ranges || []).some((r) => intersectsMonth(r, mNum));
             return `<div class="${allow ? 'allow' : ''}${busyMonth ? ' busy' : ''}" title="${MONTHS_FULL[i]}">${m}</div>`;
           }).join('')}
         </div>
@@ -204,6 +210,33 @@ function render() {
   }
   renderRows();
   $('#submitBtn').addEventListener('click', submit);
+  renderReference();
+}
+
+function renderReference() {
+  const target = document.createElement('section');
+  target.className = 'pick-reference';
+  const rules = INFO.rules || {};
+  target.innerHTML = `<div class="glass reference-card"><h3>График отпусков коллег</h3><p class="muted">Показаны выбранные и внесённые периоды. Используйте + и − для перехода от года к месяцу и дню.</p><div id="employeeTimeline"></div></div>
+    <details class="glass reference-card"><summary>Правила выбора отпуска</summary><ul>
+      <li>Годовая норма — ${escapeHtml(rules.totalDays ?? 28)} дней; праздничные дни в отпуск не входят.</li>
+      <li>Основной период — ${escapeHtml(rules.mainMin ?? 14)}–${escapeHtml(rules.mainMax ?? 21)} дней; минимальная часть — ${escapeHtml(rules.partMin ?? 3)} дня.</li>
+      <li>Одновременно могут отдыхать не более ${escapeHtml(INFO.limit)} сотрудников. Возможны дополнительные ограничения для отдельных коллег.</li>
+      <li>Выбирайте даты только в разрешённых месяцах. После отправки выбор можно сбросить до утверждения, пока ссылка действует.</li>
+      <li>С 15 по 31 декабря — только по согласованию.</li>
+    </ul></details>
+    <details class="glass reference-card"><summary>Производственный календарь 2027</summary><p class="muted">Красный — праздник, синий — выходной или перенос, жёлтый — рабочая суббота, белый — рабочий день.</p><div class="reference-months">${MONTHS_FULL.map((name, m) => {
+      const offset = (new Date(2027,m,1).getDay()+6)%7, count = new Date(2027,m+1,0).getDate();
+      const cells = Array(offset).fill('<span></span>');
+      for (let d=1; d<=count; d++) {
+        const key = `2027-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const k = DAYMAP.get(key) || 'work';
+        cells.push(`<span class="calendar-${escapeHtml(k)}" title="${key}: ${escapeHtml(k)}">${d}</span>`);
+      }
+      return `<div class="reference-month"><h4>${name}</h4><div class="reference-days">${['пн','вт','ср','чт','пт','сб','вс'].map(x => `<b>${x}</b>`).join('')}${cells.join('')}</div></div>`;
+    }).join('')}</div></details>`;
+  $('#screen').appendChild(target);
+  window.vacationTimeline(target.querySelector('#employeeTimeline'), () => INFO.colleagues || []);
 }
 
 function renderRows() {
@@ -347,6 +380,7 @@ function renderDone() {
     <button class="ghost" id="resetBtn" style="margin-top:8px">Сбросить и выбрать заново</button>
     <div class="locked-note">Одна ссылка = один окончательный выбор. Сброс доступен, пока руководитель не утвердил график.</div>
   </div>`;
+  renderReference();
   $('#resetBtn').addEventListener('click', async () => {
     try {
       const r = await window.pickRequest(token(), 'reset');
