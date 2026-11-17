@@ -117,6 +117,22 @@ function totalHolidays() {
   }, 0);
 }
 
+function allowedRanges() {
+  const ranges = [];
+  let start = null;
+  for (let d = parse('2027-01-01'); d <= parse('2027-12-31'); d = addDays(d, 1)) {
+    const key = iso(d);
+    const allowed = (INFO.months || []).includes(d.getMonth() + 1)
+      && !(INFO.forbiddenPeriods || []).some(p => key >= p.start && key <= p.end);
+    if (allowed && !start) start = key;
+    if (start && (!allowed || key === '2027-12-31')) {
+      ranges.push({ start, end: allowed ? key : iso(addDays(d, -1)) });
+      start = null;
+    }
+  }
+  return ranges;
+}
+
 /* ---------------------------------------------------------------- рендер */
 function render() {
   $('#pickFacts').innerHTML = [
@@ -134,6 +150,7 @@ function render() {
   const monthsTxt = months.length === 12 ? 'любой месяц' : months.map((m) => MONTHS_FULL[m - 1]).join(', ');
   const busy = (INFO.ranges || []).filter((r) => r.count > 0);
   const limit = INFO.limit || 1;
+  const allowed = allowedRanges();
 
   $('#screen').innerHTML = `
   <div class="glass pick-hero">
@@ -143,6 +160,7 @@ function render() {
         ? `Первый цикл: выберите <b>один</b> период отпуска — <b>${INFO.minDays}–${INFO.maxDays} дней</b>.`
         : `Второй цикл: распределите остаток — <b>${INFO.minDays}–${INFO.maxDays} дней</b>, можно несколькими периодами (минимум 3 дня каждый).`}
         <br>Разрешённые месяцы: <b>${monthsTxt}</b>.${INFO.comment ? '<br>Комментарий руководителя: ' + escapeHtml(INFO.comment) : ''}</p>
+      <p>Доступные даты: <b>${allowed.length ? allowed.map(p => fmtRange(p.start, p.end)).join('; ') : 'нет доступных дат — обратитесь к руководителю'}</b>.</p>
     </div>
     <div class="limits">
       <div class="limit"><b>${INFO.minDays}–${INFO.maxDays}</b><span>дней отпуска</span></div>
@@ -217,7 +235,9 @@ function renderReference() {
   const target = document.createElement('section');
   target.className = 'pick-reference';
   const rules = INFO.rules || {};
-  target.innerHTML = `<div class="glass reference-card"><h3>График отпусков коллег</h3><p class="muted">Показаны выбранные и внесённые периоды. Используйте + и − для перехода от года к месяцу и дню.</p><div id="employeeTimeline"></div></div>
+  const allowed = allowedRanges();
+  target.innerHTML = `<div class="glass reference-card"><h3>Доступные даты для выбора</h3><p>${allowed.length ? allowed.map(p => fmtRange(p.start, p.end)).join('; ') : 'Нет доступных дат — обратитесь к руководителю.'}</p><p class="muted">Занятость коллег и правила отдела могут дополнительно ограничивать выбор.</p></div>
+    <div class="glass reference-card"><h3>График отпусков коллег</h3><p class="muted">Показаны выбранные и внесённые периоды. Используйте + и − для перехода от года к месяцу и дню.</p><div id="employeeTimeline"></div></div>
     <details class="glass reference-card"><summary>Правила выбора отпуска</summary><ul>
       <li>Годовая норма — ${escapeHtml(rules.totalDays ?? 28)} дней; праздничные дни в отпуск не входят.</li>
       <li>Основной период — ${escapeHtml(rules.mainMin ?? 14)}–${escapeHtml(rules.mainMax ?? 21)} дней; минимальная часть — ${escapeHtml(rules.partMin ?? 3)} дня.</li>
@@ -289,6 +309,9 @@ function validateLocal() {
     }
     if (outsideAllowed) {
       issues.push({ t: `${fmtRange(p.start, p.end)} — вне разрешённых месяцев (${months.map((m) => MONTHS_FULL[m - 1]).join(', ')}).`, cls: 'err' });
+    }
+    if ((INFO.forbiddenPeriods || []).some(blocked => p.start <= blocked.end && p.end >= blocked.start)) {
+      issues.push({ t: `${fmtRange(p.start, p.end)} — пересекается с датами, запрещёнными руководителем.`, cls: 'err' });
     }
     const c = calc(p.start, p.end);
     if (c && c.vac < 3) issues.push({ t: `Период ${fmtRange(p.start, p.end)} — ${c.vac} дн., минимум 3 дня.`, cls: 'err' });

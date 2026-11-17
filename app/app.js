@@ -900,9 +900,10 @@ async function api(path, opts = {}) {
     if (path === '/api/tokens' && opts.method === 'POST') {
       const p = JSON.parse(opts.body);
       await window.cloudBridge.refreshRevision();
-      const result = await window.cloudBridge.rpc('create_vacation_invite', {
+      const result = await window.cloudBridge.rpc('create_vacation_invite_with_blocks', {
         p_employee_id: p.empId, p_cycle: p.cycle, p_min_days: p.minDays, p_max_days: p.maxDays,
         p_months: p.months, p_comment: p.comment, p_expires_days: p.expiresDays,
+        p_forbidden_periods: p.forbiddenPeriods || [],
       });
       if (!result.id || !result.token) throw new Error('Сервер вернул неполные данные ссылки.');
       issuedCloudTokens.set(result.id, result.token);
@@ -913,6 +914,7 @@ async function api(path, opts = {}) {
     }
     throw new Error('Действие недоступно в облаке.');
   }
+  if (path === '/api/tokens' && opts.method === 'POST' && JSON.parse(opts.body).forbiddenPeriods?.length) throw new Error('Запрет дат доступен только при входе в облако.');
   if (API_BASE === null) throw new Error('offline');
   const r = await fetch(API_BASE + path, {
     ...opts,
@@ -990,7 +992,7 @@ function renderAccessForm() {
 function renderMonthChips() {
   const set = new Set(accessForm.months || []);
   $('#accessMonths').innerHTML = MONTHS_FULL.map((m, i) => `
-    <button type="button" data-m="${i + 1}" class="${set.has(i + 1) ? 'on' : ''}">${m.slice(0, 3)}</button>`).join('')
+    <button type="button" data-m="${i + 1}" aria-pressed="${set.has(i + 1)}" class="${set.has(i + 1) ? 'on' : ''}">${m.slice(0, 3)}</button>`).join('')
     + `<button type="button" data-m="all" class="ghost" style="font-size:11px">Все</button>`;
   $$('#accessMonths button').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.m === 'all') {
@@ -1025,6 +1027,7 @@ function buildMessage(info, tokenInfo) {
 
 Что выбрать: ${cycleText}.
 Разрешённые месяцы: ${months}.${info.comment ? '\nКомментарий: ' + info.comment : ''}
+${info.forbiddenPeriods && info.forbiddenPeriods.length ? '\nЗапрещённые даты: ' + info.forbiddenPeriods.map(p => fmtRange(p.start, p.end)).join('; ') + '.\n' : ''}
 
 Ссылка (действует до ${exp}, выбор делается один раз):
 ${link}
@@ -1121,18 +1124,21 @@ async function issueAccess() {
   const empId = $('#accessEmp').value;
   const min = parseInt($('#accessMin').value, 10) || 14;
   const max = parseInt($('#accessMax').value, 10) || 21;
-  const months = accessForm.months && accessForm.months.length ? accessForm.months : Array.from({ length: 12 }, (_, i) => i + 1);
+  const months = accessForm.months || [];
+  const forbiddenPeriods = $$('#blockedPeriods .blocked-row').map(row => ({start: row.querySelector('[data-start]').value, end: row.querySelector('[data-end]').value}));
+  if (!months.length) return toast('Выберите хотя бы один разрешённый месяц', true);
+  if (forbiddenPeriods.some(p => !p.start || !p.end || p.start > p.end || p.start < '2027-01-01' || p.end > '2027-12-31')) return toast('Укажите корректные даты каждого запрета в 2027 году', true);
   if (min > max) return toast('«Дней от» больше «дней до»', true);
   try {
     const data = await api('/api/tokens', {
       method: 'POST',
       body: JSON.stringify({
-        empId, cycle: accessForm.cycle, minDays: min, maxDays: max, months,
+        empId, cycle: accessForm.cycle, minDays: min, maxDays: max, months, forbiddenPeriods,
         expiresDays: parseInt($('#accessExpires').value, 10) || 7,
         comment: $('#accessComment').value || '',
       }),
     });
-    const info = { empId, cycle: accessForm.cycle, minDays: min, maxDays: max, months,
+    const info = { empId, cycle: accessForm.cycle, minDays: min, maxDays: max, months, forbiddenPeriods,
       expiresAt: data.expiresAt, comment: $('#accessComment').value || '',
       token: data.token, emp: (D.employees.find((x) => x.id === empId) || {}) };
     showMessage(buildMessage(info, data));
@@ -1331,6 +1337,7 @@ function bindUi() {
     $('#accessEmp').addEventListener('change', (e) => {
       accessForm.empId = e.target.value;
       accessForm.months = null;
+      $('#blockedPeriods').replaceChildren();
       renderAccessForm();
     });
     $$('#accessCycle button').forEach((b) => b.addEventListener('click', () => {
@@ -1345,9 +1352,24 @@ function bindUi() {
     $$('#accessSeasons button').forEach((b) => b.addEventListener('click', () => {
       const map = { winter: [12, 1, 2], spring: [3, 4, 5], summer: [6, 7, 8], autumn: [9, 10, 11],
         all: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] };
-      accessForm.months = map[b.dataset.season].slice().sort((a, c) => a - c);
+      const season = map[b.dataset.season];
+      const selected = new Set(accessForm.months || []);
+      if (b.dataset.season === 'all') accessForm.months = season.slice();
+      else {
+        const remove = season.every(m => selected.has(m));
+        season.forEach(m => remove ? selected.delete(m) : selected.add(m));
+        accessForm.months = [...selected].sort((a, c) => a - c);
+      }
       renderMonthChips();
     }));
+    $('#addBlockedPeriod').addEventListener('click', () => {
+      if ($$('#blockedPeriods .blocked-row').length >= 20) return toast('Не более 20 запрещённых периодов', true);
+      const row = document.createElement('div');
+      row.className = 'dates blocked-row';
+      row.innerHTML = '<label class="field"><span>С</span><input type="date" min="2027-01-01" max="2027-12-31" data-start></label><label class="field"><span>По</span><input type="date" min="2027-01-01" max="2027-12-31" data-end></label><button type="button" class="ghost" aria-label="Убрать запрет">×</button>';
+      row.querySelector('button').addEventListener('click', () => row.remove());
+      $('#blockedPeriods').appendChild(row);
+    });
   }
 }
 

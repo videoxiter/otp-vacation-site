@@ -180,6 +180,7 @@
         </div>
         <div class="field">
           <span>Разрешённые месяцы <em id="monthsHint"></em></span>
+          <p class="muted">Выделены разрешённые месяцы. Нажмите месяц или сезон, чтобы разрешить или запретить его.</p>
           <div class="quick" id="accessSeasons">
             <button type="button" data-season="winter">❄ Зима</button>
             <button type="button" data-season="spring">✿ Весна</button>
@@ -188,6 +189,12 @@
             <button type="button" data-season="all">Все</button>
           </div>
           <div class="month-chips" id="accessMonths"></div>
+        </div>
+        <div class="field">
+          <span>Дополнительно запретить конкретные даты</span>
+          <p class="muted">Сотрудник не сможет выбрать отпуск, который захватывает эти даты, даже если месяц разрешён.</p>
+          <div id="blockedPeriods"></div>
+          <button type="button" class="ghost" id="addBlockedPeriod">+ Запретить период</button>
         </div>
         <div class="dates">
           <label class="field"><span>Срок ссылки, дней</span><input type="number" id="accessExpires" min="1" max="30" value="7"></label>
