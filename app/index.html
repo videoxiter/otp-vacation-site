@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>График отпусков ОТП — 2027</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="light.css">
+</head>
+<body>
+<div class="bg-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">ОТП</div>
+    <div class="brand-text">
+      <h1>График отпусков <span class="year">2027</span></h1>
+      <p>Приоритеты · планировщик · производственный календарь РФ</p>
+    </div>
+  </div>
+  <div class="facts" id="facts"></div>
+  <div class="cloud-controls"><span id="cloudStatus" role="status">График на этом устройстве</span><button class="ghost" id="cloudRestore" hidden>Локальная копия</button><button class="ghost" id="cloudRetry" hidden>Повторить сохранение</button><button class="ghost" id="cloudResolve" hidden>Открыть облачный график</button><button class="ghost" id="cloudLogin">Войти</button></div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="planner"><span class="ic">▣</span>Планировщик</button>
+  <button class="tab" data-tab="priority"><span class="ic">◆</span>Приоритеты</button>
+  <button class="tab" data-tab="access"><span class="ic">✦</span>Доступы</button>
+  <button class="tab" data-tab="calendar"><span class="ic">▦</span>Календарь 2027</button>
+  <button class="tab" data-tab="rules"><span class="ic">✧</span>Правила</button>
+</nav>
+
+<main id="main">
+  <p id="demoNotice" class="demo-notice" hidden>Демонстрационные данные: изменения сохраняются только в этом браузере.</p>
+
+  <!-- ============================ ПРИОРИТЕТЫ ============================ -->
+  <section class="panel" id="panel-priority">
+    <div class="hero glass">
+      <div class="hero-copy">
+        <div class="eyebrow">Кто выбирает период первым</div>
+        <h2 id="heroTitle">Считаем очередь…</h2>
+        <p id="heroText"></p>
+        <div class="hero-chips" id="heroChips"></div>
+      </div>
+      <div class="hero-ring">
+        <svg viewBox="0 0 120 120" id="heroRing">
+          <circle cx="60" cy="60" r="52" class="ring-bg"></circle>
+          <circle cx="60" cy="60" r="52" class="ring-fg" id="ringFg"></circle>
+        </svg>
+        <div class="ring-label"><b id="ringNum">0</b><span>в 1-й очереди</span></div>
+      </div>
+    </div>
+
+    <div class="controls glass">
+      <div class="ctl-head">
+        <h3>Веса критериев</h3>
+        <button class="ghost" id="resetWeights">Сбросить</button>
+      </div>
+      <div class="sliders" id="sliders"></div>
+      <div class="toggles">
+        <label class="switch"><input type="checkbox" id="headQueue" checked><span></span>
+          Руководитель вне очереди (утверждает график)</label>
+        <label class="switch"><input type="checkbox" id="deferNewHire" checked><span></span>
+          Сотрудник, принятый в 2026, выбирает последним</label>
+        <label class="num">Порог Lvl <input type="number" id="minLvl" min="1" max="10" value="2"></label>
+      </div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="glass note">
+      <h3>Как считается приоритет</h3>
+      <ol class="crit-list">
+        <li><b>Порог Lvl.</b> Достиг нужный уровень на «Мои результаты» (по умолчанию Lvl&nbsp;2) — попадает в первую очередь. Ниже порога — во вторую.</li>
+        <li><b>Награды и KPI</b> — сумма вручённых наград и средний KPI с того же сайта.</li>
+        <li><b>Закрытые задачи за 2026</b> — из JIRA (проект HELP).</li>
+        <li><b>Отгулянные дни</b> — чем больше уже отдохнул в 2026, тем ниже приоритет.</li>
+        <li><b>Лето</b> — кто был в отпуске летом 2026, у того ниже шанс на лето 2027.</li>
+        <li><b>Новый сотрудник</b> — принят в 2026 году, поэтому в конце очереди.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============================ ПЛАНИРОВЩИК ============================ -->
+  <section class="panel active" id="panel-planner">
+    <div class="planner-grid">
+      <div class="glass form-card">
+        <h3>Занести период</h3>
+        <label class="field">
+          <span>Сотрудник <em id="pickHint"></em></span>
+          <select id="empSelect"></select>
+        </label>
+        <div class="dates">
+          <label class="field"><span>Начало</span><input type="date" id="startDate" min="2027-01-01" max="2027-12-31"></label>
+          <label class="field"><span>Конец</span><input type="date" id="endDate" min="2027-01-01" max="2027-12-31"></label>
+        </div>
+        <div class="quick" id="quickRanges"></div>
+        <div class="calc" id="calcBox">
+          <div class="calc-num"><b id="calcDays">—</b><span>дней отпуска</span></div>
+          <div class="calc-num"><b id="calcHolidays">—</b><span>пр. праздничных</span></div>
+          <div class="calc-num"><b id="calcWork">—</b><span>рабочих</span></div>
+          <div class="calc-num"><b id="calcCal">—</b><span>календарных</span></div>
+        </div>
+        <div class="calc-formula" id="calcFormula">Выберите даты — посчитаю по ст. 120 ТК РФ</div>
+        <button class="primary" id="addBtn" disabled>Добавить в график</button>
+        <div class="hint" id="suggestSub"></div>
+      </div>
+
+      <div class="glass timeline-card">
+        <div class="timeline-head">
+          <h3>График 2027</h3>
+          <div class="legend">
+            <span><i class="sw draft"></i>черновик</span>
+            <span><i class="sw confirmed"></i>утверждено</span>
+            <span><i class="sw holiday"></i>праздник</span>
+          </div>
+        </div>
+        <div class="gantt" id="gantt"></div>
+      </div>
+    </div>
+
+    <div class="glass issues-card">
+      <div class="issues-head">
+        <h3>Проверка ограничений</h3>
+        <div class="issue-badges" id="issueBadges"></div>
+      </div>
+      <ul class="issues" id="issues"></ul>
+    </div>
+
+    <div class="glass table-card">
+      <div class="table-head">
+        <h3>Внесённые периоды <span class="muted" id="entriesCount"></span></h3>
+        <div class="actions">
+          <button class="ghost" id="exportMd">Скопировать для Confluence</button>
+          <button class="ghost" id="exportJson">Скачать JSON</button>
+          <button class="ghost danger" id="clearAll">Очистить</button>
+          <button class="primary" id="confirmBtn">Подтвердить</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl" id="entriesTable">
+          <thead><tr>
+            <th>Сотрудник</th><th>Период</th><th>Дней</th><th>Рабочих</th>
+            <th>ВрИО</th><th>Статус</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="progress-rows" id="progressRows"></div>
+    </div>
+  </section>
+
+  <!-- ============================ ДОСТУПЫ ============================ -->
+  <section class="panel" id="panel-access">
+    <div class="access-grid">
+      <div class="glass form-card">
+        <h3>Дать временный доступ</h3>
+        <p class="muted" style="margin:0">Сотрудник получает одноразовую ссылку и выбирает один период по заданным параметрам.</p>
+        <label class="field">
+          <span>Сотрудник <em id="accessQueue"></em></span>
+          <select id="accessEmp"></select>
+        </label>
+        <div class="quick" id="accessCycle">
+          <button data-cycle="1" class="on">Цикл 1 · основной 14–21</button>
+          <button data-cycle="2">Цикл 2 · остаток</button>
+        </div>
+        <div class="dates">
+          <label class="field"><span>Дней от</span><input type="number" id="accessMin" min="3" max="28" value="14"></label>
+          <label class="field"><span>Дней до</span><input type="number" id="accessMax" min="3" max="28" value="21"></label>
+        </div>
+        <div class="field">
+          <span>Разрешённые месяцы <em id="monthsHint"></em></span>
+          <div class="quick" id="accessSeasons">
+            <button type="button" data-season="winter">❄ Зима</button>
+            <button type="button" data-season="spring">✿ Весна</button>
+            <button type="button" data-season="summer">☀ Лето</button>
+            <button type="button" data-season="autumn">🍂 Осень</button>
+            <button type="button" data-season="all">Все</button>
+          </div>
+          <div class="month-chips" id="accessMonths"></div>
+        </div>
+        <div class="dates">
+          <label class="field"><span>Срок ссылки, дней</span><input type="number" id="accessExpires" min="1" max="30" value="7"></label>
+          <label class="field"><span>Комментарий</span><input type="text" id="accessComment" placeholder="например: только 1-я половина месяца"></label>
+        </div>
+        <button class="primary" id="issueBtn">Дать временный доступ</button>
+        <div class="hint" id="queueNext"></div>
+        <div class="hint" id="apiHint"></div>
+      </div>
+
+      <div class="glass access-list">
+        <div class="table-head">
+          <h3>Выданные ссылки <span class="muted" id="tokensCount"></span></h3>
+          <div class="actions">
+            <button class="ghost" id="refreshTokens">Обновить</button>
+            <button class="ghost" id="publishSchedule">Опубликовать график сотрудникам</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="tokensTable">
+            <thead><tr>
+              <th>Сотрудник</th><th>Цикл</th><th>Параметры</th><th>Действует до</th>
+              <th>Статус</th><th>Выбор</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass message-card" id="messageCard" hidden>
+      <div class="message-head">
+        <h3>Сообщение сотруднику</h3>
+        <button class="ghost" id="copyMessage">Копировать</button>
+      </div>
+      <pre id="messageText"></pre>
+    </div>
+  </section>
+
+  <!-- ============================ КАЛЕНДАРЬ ============================ -->
+  <section class="panel" id="panel-calendar">
+    <div class="glass cal-head">
+      <div>
+        <h3>Производственный календарь РФ 2027</h3>
+        <p class="muted">247 рабочих дней · 14 нерабочих праздничных · переносы по ПП РФ от 17.09.2026 № 1187</p>
+      </div>
+      <div class="legend wide">
+        <span><i class="sw holiday"></i>праздник (не входит в отпуск)</span>
+        <span><i class="sw transferred"></i>перенесённый выходной</span>
+        <span><i class="sw workSaturday"></i>рабочая суббота</span>
+        <span><i class="sw weekend"></i>выходной</span>
+      </div>
+    </div>
+    <div class="months" id="months"></div>
+    <div class="glass windows-card">
+      <h3>Выгодные окна: когда праздники «дарят» дни</h3>
+      <p class="muted">Окно на 14 календарных дней. Чем больше праздников внутри — тем меньше дней отпуска тратится.</p>
+      <div class="windows" id="windows"></div>
+    </div>
+  </section>
+
+  <!-- ============================ ПРАВИЛА ============================ -->
+  <section class="panel" id="panel-rules">
+    <div class="rules-grid" id="rulesGrid"></div>
+    <div class="glass sources">
+      <h3>Источники</h3>
+      <ul id="sources"></ul>
+      <p class="muted">Данные сотрудников доступны руководителю после входа.</p>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<dialog id="cloudDialog">
+  <form id="cloudForm">
+    <h2>Вход руководителя</h2>
+    <label class="field"><span>Email</span><input name="email" type="email" autocomplete="username" required></label>
+    <label class="field"><span>Пароль</span><input name="password" type="password" autocomplete="current-password" required></label>
+    <p id="cloudError" role="alert"></p>
+    <div class="actions"><button type="button" class="ghost" id="cloudCancel">Отмена</button><button type="submit" class="primary">Войти</button></div>
+  </form>
+</dialog>
+
+<script src="config.js"></script>
+<script src="demo-data.js"></script>
+
+<script src="cloud.js"></script>
+</body>
+</html>
