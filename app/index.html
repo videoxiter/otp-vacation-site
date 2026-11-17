@@ -51,7 +51,8 @@
       </div>
     </div>
 
-    <div class="controls glass">
+    <details class="controls glass">
+      <summary>Настройки приоритета</summary>
       <div class="ctl-head">
         <h3>Веса критериев</h3>
         <button class="ghost" id="resetWeights">Сбросить</button>
@@ -64,7 +65,7 @@
           Сотрудник, принятый в 2026, выбирает последним</label>
         <label class="num">Порог Lvl <input type="number" id="minLvl" min="1" max="10" value="2"></label>
       </div>
-    </div>
+    </details>
 
     <div class="cards" id="cards"></div>
 
@@ -116,6 +117,14 @@
           </div>
         </div>
         <div class="gantt" id="gantt"></div>
+        <div class="mobile-schedule">
+          <div class="mobile-schedule-head">
+            <button class="ghost" id="previousMonth" type="button" aria-label="Предыдущий месяц">‹</button>
+            <strong id="mobileMonthName"></strong>
+            <button class="ghost" id="nextMonth" type="button" aria-label="Следующий месяц">›</button>
+          </div>
+          <div id="mobilePeriods"></div>
+        </div>
       </div>
     </div>
 

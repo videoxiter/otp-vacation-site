@@ -7,4 +7,5 @@ window.APP_CONFIG = {
   apiBase: '',
   supabaseUrl: 'https://ghmdavywolqtrivqlqkz.supabase.co',
   supabasePublishableKey: 'sb_publishable_qDhEc4wyNNB9vTxKRIYCrg_d1vHy6cN',
+  publicSiteUrl: 'https://videoxiter.github.io/otp-vacation-site/',
 };

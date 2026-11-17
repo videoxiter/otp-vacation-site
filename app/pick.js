@@ -16,7 +16,7 @@ const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 
 const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
 const fmtDay = (s) => { const d = parse(s); return d.getDate() + ' ' + MONTHS_GEN[d.getMonth()]; };
 const fmtRange = (a, b) => fmtDay(a) + ' — ' + fmtDay(b);
-const fmtDateRu = (s) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '—');
+const fmtDateRu = (s) => (!s ? '—' : /(?:Z|[+-]\d{2}:\d{2})$/.test(s) ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(s)) : s.slice(0, 10).split('-').reverse().join('.'));
 const plural = (n, one, few, many) => {
   const a = Math.abs(n) % 100, b = a % 10;
   if (a > 10 && a < 20) return many;

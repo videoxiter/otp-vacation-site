@@ -41,7 +41,7 @@ const plural = (n, one, few, many) => {
   return many;
 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const fmtDateRu = (s) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '—');
+const fmtDateRu = (s) => (!s ? '—' : /(?:Z|[+-]\d{2}:\d{2})$/.test(s) ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(s)) : s.slice(0, 10).split('-').reverse().join('.'));
 
 /* карта дней календаря 2027 */
 const DAYMAP = new Map(CAL.days.map((x) => [x.d, x]));
@@ -424,6 +424,7 @@ function ringUpdate(count, total) {
 }
 
 function renderPriority(animate = true) {
+  const expanded = new Set($$('#cards details[open]').map((card) => card.dataset.employee));
   const { ordered, head, eligibleCount } = buildRanking();
   const byId = Object.fromEntries(D.employees.map((e) => [e.id, e]));
   const maxScore = Math.max(1, ...ordered.map((x) => x.score));
@@ -449,12 +450,12 @@ function renderPriority(animate = true) {
 
   // карточки
   const cards = [];
-  if (head) cards.push(cardHtml(head, 'head', true));
+  if (head) cards.push(cardHtml(head, 'head', true, 0, expanded.has(head.id)));
 
   ordered.forEach((e, idx) => {
     let cls = '';
     if (deferredEmployee(e) && state.deferNewHire) cls = 'forced';
-    cards.push(cardHtml(e, cls, false, idx));
+    cards.push(cardHtml(e, cls, false, idx, expanded.has(e.id)));
   });
   $('#cards').innerHTML = cards.join('');
 
@@ -488,7 +489,7 @@ function verdictOf(e, place) {
   return ['low', 'поздний выбор'];
 }
 
-function cardHtml(e, cls, isHead, idx = 0) {
+function cardHtml(e, cls, isHead, idx = 0, expanded = false) {
   const place = e.place;
   const [vcl, vtxt] = verdictOf(e, place);
   const o = e.otp;
@@ -528,15 +529,16 @@ function cardHtml(e, cls, isHead, idx = 0) {
   }).join('');
 
   return `
-  <article class="glass card ${cls}" style="--i:${idx}">
-    <div class="card-top">
+  <details class="glass card ${cls}" style="--i:${idx}" data-employee="${escapeHtml(e.id)}" ${expanded ? 'open' : ''}>
+    <summary class="card-top">
       <div class="place ${e.isHead ? 'head-badge' : (cls === 'forced' ? 'muted-badge' : '')}">${e.isHead ? '★' : place}</div>
       <div class="who">
         <h4>${escapeHtml(e.fio)}</h4>
         <p>${escapeHtml(e.role)}</p>
       </div>
+      <span class="summary-score">${e.score} баллов</span>
       <span class="verdict ${vcl}">${vtxt}</span>
-    </div>
+    </summary>
     <div class="metrics">${otpCells}</div>
     <div class="bar-row">
       <div class="bar-head"><span>Итоговый балл приоритета</span><b class="score-num" data-v="${e.score}">${e.score}</b></div>
@@ -552,11 +554,27 @@ function cardHtml(e, cls, isHead, idx = 0) {
       <h5 style="margin-top:10px">Сезоны</h5>
       <div class="tags">${seasonTags}</div>
     </div>
-  </article>`;
+  </details>`;
 }
 
 /* -------------------------------------------------------------- планировщик */
 let pick = { empId: null, start: '', end: '' };
+let mobileMonth = 0;
+
+function renderMobileSchedule() {
+  const month = mobileMonth + 1;
+  const first = `2027-${pad(month)}-01`;
+  const last = `2027-${pad(month)}-${pad(new Date(2027, month, 0).getDate())}`;
+  const entries = state.entries.filter((entry) => entry.start <= last && entry.end >= first)
+    .slice().sort((a, b) => a.start.localeCompare(b.start));
+  $('#mobileMonthName').textContent = MONTHS_FULL[mobileMonth] + ' 2027';
+  $('#mobilePeriods').innerHTML = entries.length ? entries.map((entry) => {
+    const employee = D.employees.find((person) => person.id === entry.empId);
+    return `<div class="mobile-period"><b>${escapeHtml(employee ? employee.short : entry.empId)}</b>
+      <span>${fmtRange(entry.start, entry.end)}</span>
+      <span class="badge ${entry.status === 'confirmed' ? 'ok' : 'draft'}">${entry.status === 'confirmed' ? 'утверждён' : 'черновик'}</span></div>`;
+  }).join('') : '<p class="muted">В этом месяце пока нет периодов.</p>';
+}
 
 function renderSelect() {
   const { ordered, head } = buildRanking();
@@ -684,6 +702,7 @@ function renderGantt() {
   }
   html.push('</div>');
   $('#gantt').innerHTML = html.join('');
+  renderMobileSchedule();
 }
 
 function renderIssues() {
@@ -720,13 +739,21 @@ function renderTable() {
         <td class="num muted">${c.work}</td>
         <td class="muted">${escapeHtml(sub ? sub.short : '—')}</td>
         <td><span class="badge ${x.status === 'confirmed' ? 'ok' : (bad ? 'bad' : 'draft')}">${x.status === 'confirmed' ? 'утверждён' : 'черновик'}</span></td>
-        <td style="text-align:right"><button class="del" data-del="${escapeHtml(x.id)}" title="Удалить">×</button></td>
+        <td style="text-align:right">${x.status === 'confirmed' && window.APP_CLOUD_STATE
+          ? `<button class="ghost" data-unconfirm="${escapeHtml(x.id)}">Снять утверждение</button>`
+          : `<button class="del" data-del="${escapeHtml(x.id)}" title="Удалить">×</button>`}</td>
       </tr>`;
     }).join('');
   }
   $$('#entriesTable .del').forEach((b) => b.addEventListener('click', () => {
     state.entries = state.entries.filter((x) => x.id !== b.dataset.del);
     saveState(); renderAll(); toast('Период удалён');
+  }));
+  $$('#entriesTable [data-unconfirm]').forEach((b) => b.addEventListener('click', async () => {
+    if (!window.confirm('Снять утверждение этого периода?')) return;
+    b.disabled = true;
+    try { await window.cloudBridge.unconfirm(b.dataset.unconfirm); }
+    catch (e) { b.disabled = false; toast(e.message || 'Не удалось снять утверждение', true); }
   }));
 
   const { ordered, head } = buildRanking();
@@ -895,6 +922,7 @@ async function api(path, opts = {}) {
 
 async function checkApi() {
   if (window.APP_CLOUD_STATE) { apiOnline = true; return; }
+  if (D.meta.demo) return;
   try {
     await api('/api/ping');
     apiOnline = true;
@@ -904,6 +932,11 @@ async function checkApi() {
 }
 
 function baseUrl() {
+  if (window.APP_CLOUD_STATE && window.APP_CONFIG?.publicSiteUrl) {
+    const publicUrl = new URL(window.APP_CONFIG.publicSiteUrl);
+    if (publicUrl.protocol !== 'https:') throw new Error('Адрес сайта должен использовать HTTPS.');
+    return publicUrl.origin + publicUrl.pathname.replace(/\/?$/, '/');
+  }
   if (location.protocol === 'file:') return 'http://127.0.0.1:8765/';
   const p = location.pathname;
   return location.origin + p.slice(0, p.lastIndexOf('/') + 1);
@@ -1235,6 +1268,8 @@ function bindUi() {
   $('#empSelect').addEventListener('change', (e) => { pick.empId = e.target.value; renderQuick(); updateCalc(); });
   $('#startDate').addEventListener('change', updateCalc);
   $('#endDate').addEventListener('change', updateCalc);
+  $('#previousMonth').addEventListener('click', () => { mobileMonth = (mobileMonth + 11) % 12; renderMobileSchedule(); });
+  $('#nextMonth').addEventListener('click', () => { mobileMonth = (mobileMonth + 1) % 12; renderMobileSchedule(); });
   $('#addBtn').addEventListener('click', addEntry);
 
   $('#confirmBtn').addEventListener('click', () => {
