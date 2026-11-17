@@ -107,9 +107,13 @@ body::before { background: linear-gradient(180deg, #e9f1fc, #f3f6fa 380px); }
 .zoom-track { position:relative; height:24px; background:repeating-linear-gradient(90deg,#eef3fa 0,#eef3fa 1px,transparent 1px,transparent 8.333%); }
 .zoom-bar { position:absolute; top:4px; height:16px; background:#76a8f5; border-radius:5px; min-width:3px; }
 .zoom-bar.confirmed { background:#398c78; }
+.zoom-slider { display:grid; gap:5px; margin:18px 0 4px; color:#64748b; font-size:12px; }
+.zoom-slider input { width:100%; min-height:32px; margin:0; accent-color:#4678dd; cursor:grab; touch-action:pan-x; }
+.zoom-slider input:active { cursor:grabbing; }
+.zoom-slider-ends { display:flex; justify-content:space-between; }
 #gantt[hidden] { display:none; }
-.pick-reference { display:grid; gap:16px; margin-top:20px; }
-.reference-card { padding:20px; }
+.pick-reference { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; margin-top:20px; }
+.reference-card { min-width:0; padding:20px; }
 .reference-card summary { cursor:pointer; font-weight:700; font-size:18px; }
 .reference-card li { margin:8px 0; }
 .reference-months { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; }
