@@ -67,6 +67,13 @@
       </div>
     </details>
 
+    <details class="controls glass" id="employeeControls" hidden>
+      <summary>Добавить сотрудника</summary>
+      <form id="addEmployeeForm">
+        <label class="field"><span>ФИО</span><input name="fio" type="text" maxlength="150" required></label>
+        <button type="submit" class="primary">Добавить сотрудника</button>
+      </form>
+    </details>
     <div class="cards" id="cards"></div>
 
     <div class="glass note">
@@ -165,7 +172,7 @@
     <div class="access-grid">
       <div class="glass form-card">
         <h3>Дать временный доступ</h3>
-        <p class="muted" style="margin:0">Сотрудник получает одноразовую ссылку и выбирает один период по заданным параметрам.</p>
+        <p class="muted" id="accessCycleHint" style="margin:0"></p>
         <label class="field">
           <span>Сотрудник <em id="accessQueue"></em></span>
           <select id="accessEmp"></select>
@@ -174,7 +181,7 @@
           <button data-cycle="1" class="on">Цикл 1 · основной 14–21</button>
           <button data-cycle="2">Цикл 2 · остаток</button>
         </div>
-        <div class="dates">
+        <div class="dates" id="accessDayBounds">
           <label class="field"><span>Дней от</span><input type="number" id="accessMin" min="3" max="28" value="14"></label>
           <label class="field"><span>Дней до</span><input type="number" id="accessMax" min="3" max="28" value="21"></label>
         </div>

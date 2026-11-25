@@ -85,7 +85,6 @@ function calc(start, end) {
     if (!k || k === 'holiday') hol++;
     else if (k === 'work' || k === 'workSaturday') work++;
     d = addDays(d, 1);
-    if (cal > 60) break;
   }
   return { cal, hol, work, vac: cal - hol };
 }
@@ -146,6 +145,11 @@ function render() {
   if (INFO.status === 'expired') return renderError('Срок ссылки истёк', `Ссылка действовала до ${fmtDateRu(INFO.expiresAt)}. Попросите руководителя выдать новую.`);
 
   const cycle = INFO.cycle;
+  if (cycle === 2 && INFO.maxDays < 3) {
+    return renderError('Выбор недоступен', INFO.maxDays === 0
+      ? 'Все 28 дней отпуска уже распределены.'
+      : 'Осталось меньше 3 дней. Обратитесь к руководителю, чтобы скорректировать график.');
+  }
   const months = INFO.months || [];
   const monthsTxt = months.length === 12 ? 'любой месяц' : months.map((m) => MONTHS_FULL[m - 1]).join(', ');
   const busy = (INFO.ranges || []).filter((r) => r.count > 0);
@@ -158,12 +162,12 @@ function render() {
       <h2>${escapeHtml(INFO.emp.short)}</h2>
       <p>${cycle === 1
         ? `Первый цикл: выберите <b>один</b> период отпуска — <b>${INFO.minDays}–${INFO.maxDays} дней</b>.`
-        : `Второй цикл: распределите остаток — <b>${INFO.minDays}–${INFO.maxDays} дней</b>, можно несколькими периодами (минимум 3 дня каждый).`}
+        : `Второй цикл: распределите весь остаток из 28 дней отпуска. Выберите один или несколько периодов по <b>3–14 дней</b> каждый, пока остаток не станет равен нулю.`}
         <br>Разрешённые месяцы: <b>${monthsTxt}</b>.${INFO.comment ? '<br>Комментарий руководителя: ' + escapeHtml(INFO.comment) : ''}</p>
       <p>Доступные даты: <b>${allowed.length ? allowed.map(p => fmtRange(p.start, p.end)).join('; ') : 'нет доступных дат — обратитесь к руководителю'}</b>.</p>
     </div>
     <div class="limits">
-      <div class="limit"><b>${INFO.minDays}–${INFO.maxDays}</b><span>дней отпуска</span></div>
+      <div class="limit"><b>${cycle === 1 ? `${INFO.minDays}–${INFO.maxDays}` : INFO.maxDays}</b><span>${cycle === 1 ? 'дней отпуска' : 'дней к распределению'}</span></div>
       <div class="limit"><b>${limit}</b><span>чел. одновременно</span></div>
       <div class="limit"><b>1</b><span>отправка</span></div>
     </div>
@@ -178,7 +182,7 @@ function render() {
       <div class="totals">
         <div><div class="big"><span id="totalVac">0</span> <small>дней отпуска</small></div>
           <div class="gift" id="totalHol"></div></div>
-        <div class="muted" id="totalHint"></div>
+        <div class="muted" id="totalHint" aria-live="polite"></div>
       </div>
       <div class="feedback" id="feedback"></div>
       <button class="primary" id="submitBtn" disabled>Отправить выбор</button>
@@ -210,7 +214,7 @@ function render() {
       <div class="glass side-block">
         <h4>Что учесть</h4>
         <ul class="rules-mini">
-          <li>Минимальный период — <b>3 дня</b>, основной — <b>14–21 день</b>.</li>
+          <li>${cycle === 1 ? 'Основной период — <b>14–21 день</b>.' : 'Каждый период во втором цикле — <b>3–14 дней</b>.'}</li>
           <li>Всего <b>28 календарных дней</b> в год (этот цикл — ${cycle === 1 ? 'первая часть' : 'остаток'}).</li>
           <li>Одновременно в отпуске не более <b>${INFO.rules ? INFO.rules.minPercent : 10}%</b> отдела.</li>
           <li>С 15 по 31 декабря — только по согласованию.</li>
@@ -221,7 +225,6 @@ function render() {
 
   if (cycle === 2) {
     $('#addPeriod').addEventListener('click', () => {
-      if (periods.length >= 6) return toast('Максимум 6 периодов', true);
       periods.push({ start: '', end: '' });
       renderRows();
     });
@@ -298,6 +301,9 @@ function validateLocal() {
   const limit = INFO.limit || 1;
 
   if (!filled.length) return { ok: false, issues: [{ t: 'Выберите даты периода.', cls: '' }], total: 0 };
+  if (periods.some(p => Boolean(p.start) !== Boolean(p.end))) {
+    issues.push({ t: 'Укажите начало и конец каждого периода.', cls: 'err' });
+  }
 
   for (const p of filled) {
     if (!p.start.startsWith('2027') || !p.end.startsWith('2027')) issues.push({ t: `Даты должны быть в 2027 году: ${fmtRange(p.start, p.end)}.`, cls: 'err' });
@@ -315,6 +321,7 @@ function validateLocal() {
     }
     const c = calc(p.start, p.end);
     if (c && c.vac < 3) issues.push({ t: `Период ${fmtRange(p.start, p.end)} — ${c.vac} дн., минимум 3 дня.`, cls: 'err' });
+    if (cycle === 2 && c && c.vac > 14) issues.push({ t: `Период ${fmtRange(p.start, p.end)} — ${c.vac} дн., максимум 14 дней.`, cls: 'err' });
   }
 
   for (let i = 0; i < filled.length; i++) {
@@ -328,6 +335,9 @@ function validateLocal() {
   const total = totalDays();
   if (cycle === 2) {
     if (total !== INFO.maxDays) issues.push({ t: `Нужно распределить весь остаток: ${INFO.maxDays} дн. Сейчас ${total}.`, cls: 'err' });
+    if ([1, 2].includes(INFO.maxDays - total)) {
+      issues.push({ t: 'Измените даты выбранного периода, чтобы использовать оставшиеся дни.', cls: 'err' });
+    }
   } else if (total < INFO.minDays || total > INFO.maxDays) {
     issues.push({ t: `Сумма ${total} дн. — вне диапазона ${INFO.minDays}–${INFO.maxDays}.`, cls: 'err' });
   }
@@ -349,9 +359,14 @@ function update() {
   $('#totalVac').textContent = v.total;
   const hol = totalHolidays();
   $('#totalHol').innerHTML = hol ? `+ ${hol} праздничных (продлевают отдых)` : '';
+  const remaining = INFO.maxDays - v.total;
   $('#totalHint').textContent = INFO.cycle === 2
-    ? `нужно распределить ${INFO.maxDays} дн.`
+    ? (remaining >= 0 ? `Осталось распределить ${remaining} дн.` : `Сократите выбор на ${-remaining} дн.`)
     : `допустимо ${INFO.minDays}–${INFO.maxDays} дн.`;
+  if (INFO.cycle === 2) {
+    $('#addPeriod').disabled = remaining < 3 || periods.length >= Math.floor(INFO.maxDays / 3)
+      || periods.some(p => !p.start || !p.end);
+  }
   $('#feedback').innerHTML = v.issues.map((i) => `<div class="${i.cls}">${i.cls === 'err' ? '✕' : (i.cls === 'ok' ? '✓' : '›')} ${i.t}</div>`).join('');
   $('#submitBtn').disabled = !v.ok;
 }
@@ -411,11 +426,8 @@ function renderDone() {
         const data = await r.json().catch(() => ({}));
         throw new Error(data.error || data.message || 'Не удалось сбросить выбор');
       }
-      INFO.status = 'open';
-      INFO.selection = null;
       periods = [{ start: '', end: '' }];
-      render();
-      toast('Можно выбрать заново');
+      await load();
     } catch (e) { toast(e.message || 'Не удалось сбросить', true); }
   });
 }

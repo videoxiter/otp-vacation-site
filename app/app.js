@@ -181,13 +181,14 @@ function buildRanking() {
     return { ...e, score: sc.total, parts: sc.parts, eligible: lvl !== null && lvl >= state.minLvl, lvl };
   });
   const head = list.find((x) => x.isHead);
-  const newcomer = list.find(deferredEmployee);
-  let pool = list.filter((x) => !(state.headQueue && x.isHead) && !(state.deferNewHire && newcomer && x.id === newcomer.id));
+  const newcomer = list.find((x) => !x.manuallyAdded && deferredEmployee(x));
+  const pool = list.filter((x) => !x.manuallyAdded && !(state.headQueue && x.isHead) && !(state.deferNewHire && x.id === newcomer?.id));
   const byScore = (a, b) => b.score - a.score || (a.fio > b.fio ? 1 : -1);
   const first = pool.filter((x) => x.eligible).sort(byScore);
   const second = pool.filter((x) => !x.eligible).sort(byScore);
   const ordered = [...first, ...second];
   if (state.deferNewHire && newcomer) ordered.push(newcomer);
+  ordered.push(...list.filter((x) => x.manuallyAdded));
   ordered.forEach((x, i) => { x.place = i + 1; });
   return { ordered, head: state.headQueue ? head : null, eligibleCount: first.length };
 }
@@ -435,7 +436,10 @@ function renderPriority(animate = true) {
   if (first) {
     const lvlTxt = first.otp ? `Lvl ${first.otp.lvl}` : 'нет данных «Мои результаты»';
     $('#heroTitle').textContent = `Первым период выбирает ${first.short}`;
-    $('#heroText').textContent = `${first.fio} — ${first.role.toLowerCase()}. ${lvlTxt}, ${first.otp ? first.otp.awardInstances + ' наград, KPI ' + first.otp.kpi : 'JIRA: ' + first.jira.closed2026 + ' закрытых задач'}`
+    const description = first.role ? `${first.fio} — ${first.role.toLowerCase()}` : first.fio;
+    const results = first.otp ? `${first.otp.awardInstances} наград, KPI ${first.otp.kpi}`
+      : (first.jira?.closed2026 == null ? 'нет данных Jira' : `JIRA: ${first.jira.closed2026} закрытых задач`);
+    $('#heroText').textContent = `${description}. ${lvlTxt}, ${results}`
       + `${first.vac2026 && first.vac2026.summer ? ', летом 2026 уже отдыхал' : ''}. `
       + `Далее по очереди: ${ordered.slice(1, 4).map((x) => x.short).join(' → ')}.`;
   }
@@ -511,10 +515,11 @@ function cardHtml(e, cls, isHead, idx = 0, expanded = false) {
 
   const why = [];
   if (o) why.push(`<b>Lvl ${escapeHtml(o.lvl)}</b> ${o.lvl >= state.minLvl ? '— порог пройден, 1-я очередь' : '— ниже порога ' + escapeHtml(state.minLvl) + ', 2-я очередь'}; ${escapeHtml(o.stars)} ⭐, ${escapeHtml(o.awardInstances)} наград, KPI ${escapeHtml(o.kpi)}.`);
+  else if (e.manuallyAdded) why.push('Добавлен вручную. Данных для расчёта приоритета пока нет.');
   else why.push(`На «Мои результаты» данных нет — ${e.isHead ? 'руководитель отдела' : 'принят в 2026, KPI ещё не ведётся'}.`);
-  why.push(`JIRA HELP: <b>${escapeHtml(e.jira.requestsYear ?? '—')}</b> запросов за год, <b>${escapeHtml(e.jira.closed2026 ?? '—')}</b> закрыто в 2026.`);
+  why.push(`JIRA HELP: <b>${escapeHtml(e.jira?.requestsYear ?? '—')}</b> запросов за год, <b>${escapeHtml(e.jira?.closed2026 ?? '—')}</b> закрыто в 2026.`);
   if (v) why.push(`Отпуск 2026: <b>${escapeHtml(v.daysCal)} дн.</b> (${escapeHtml(v.monthNames.join(', '))}) — ${v.summer ? 'лето занято, шанс на лето 2027 ниже' : 'лето свободно'}.`);
-  else why.push('В графике 2026 не было — отпуск не отгулян.');
+  else if (!e.manuallyAdded) why.push('В графике 2026 не было — отпуск не отгулян.');
   if (deferredEmployee(e)) why.push('Принят в 2026 году — по правилу №6 в конце очереди.');
   if (e.isHead) why.push('Как руководитель утверждает график — выбирает период вне общей очереди.');
 
@@ -931,9 +936,42 @@ async function checkApi() {
   if (D.meta.demo) return;
   try {
     await api('/api/ping');
+    const { employees } = await api('/api/employees');
+    D.employees.push(...employees);
     apiOnline = true;
   } catch (e) {
     apiOnline = false;
+  }
+}
+
+async function addEmployee(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const fio = form.elements.fio.value.trim().replace(/\s+/g, ' ');
+  if (!fio) return toast('Введите ФИО сотрудника', true);
+  if (D.employees.some(e => e.fio.toLowerCase() === fio.toLowerCase())) {
+    return toast('Сотрудник с таким ФИО уже есть в списке', true);
+  }
+  const button = form.querySelector('button');
+  button.disabled = true;
+  try {
+    if (window.APP_CLOUD_STATE) {
+      await window.cloudBridge.refreshRevision();
+      D.employees.push({ id: 'manual-' + crypto.randomUUID(), fio, short: fio, role: '', manuallyAdded: true });
+      saveState();
+      renderAll();
+      await window.cloudBridge.refreshRevision();
+    } else {
+      const { employee } = await api('/api/employees', { method: 'POST', body: JSON.stringify({ fio }) });
+      D.employees.push(employee);
+      renderAll();
+    }
+    form.reset();
+    toast('Сотрудник добавлен');
+  } catch (e) {
+    toast(e.message || 'Не удалось сохранить сотрудника', true);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -950,12 +988,15 @@ function baseUrl() {
 
 function renderAccessForm() {
   const { ordered, head } = buildRanking();
+  const secondCycle = accessForm.cycle === 2;
   const opts = [];
   const list = head ? [head, ...ordered] : ordered;
+  if (secondCycle) list.sort((a, b) => a.fio.localeCompare(b.fio, 'ru'));
   list.forEach((e) => {
     const rem = Math.max(0, D.rules.totalDays - personDays(e.id));
     const lvl = e.otp ? 'Lvl ' + e.otp.lvl : 'Lvl —';
-    opts.push(`<option value="${escapeHtml(e.id)}">${e.isHead ? '★ ' : (e.place + '. ')}${escapeHtml(e.fio)} — ${escapeHtml(lvl)}, осталось ${rem} дн.</option>`);
+    const label = secondCycle ? e.fio : `${e.isHead ? '★ ' : (e.place + '. ')}${e.fio} — ${lvl}, осталось ${rem} дн.`;
+    opts.push(`<option value="${escapeHtml(e.id)}">${escapeHtml(label)}</option>`);
   });
   const sel = $('#accessEmp');
   const prev = sel.value || accessForm.empId;
@@ -964,7 +1005,7 @@ function renderAccessForm() {
   accessForm.empId = sel.value;
   const cur = D.employees.find((e) => e.id === accessForm.empId);
   const ranked = ordered.find((e) => e.id === accessForm.empId);
-  $('#accessQueue').textContent = cur
+  $('#accessQueue').textContent = cur && !secondCycle
     ? (cur.isHead ? 'вне очереди' : (ranked ? 'очередь ' + ranked.place + ' из ' + ordered.length : ''))
     : '';
 
@@ -977,11 +1018,13 @@ function renderAccessForm() {
     if (hintEl) hintEl.textContent = 'рекомендуем: ' + rec.good.map((g) => MONTHS_FULL[g.m - 1].toLowerCase()).join(', ');
   }
   renderMonthChips();
-  if (accessForm.cycle === 1) {
+  $('#accessDayBounds').hidden = secondCycle;
+  $('#queueNext').hidden = secondCycle;
+  $('#accessCycleHint').textContent = secondCycle
+    ? 'Сотрудник распределяет весь остаток из 28 дней. Каждый период длится от 3 до 14 дней.'
+    : 'Сотрудник получает одноразовую ссылку и выбирает один период по заданным параметрам.';
+  if (!secondCycle) {
     $('#accessMin').value = 14; $('#accessMax').value = 21;
-  } else {
-    const rem = Math.max(3, D.rules.totalDays - personDays(cur ? cur.id : ''));
-    $('#accessMin').value = 3; $('#accessMax').value = rem;
   }
   const next = ordered.filter((x) => !state.entries.some((en) => en.empId === x.id)).slice(0, 4);
   $('#queueNext').innerHTML = next.length
@@ -1007,8 +1050,8 @@ function renderMonthChips() {
   }));
 }
 
-function buildMessage(info, tokenInfo) {
-  const e = D.employees.find((x) => x.id === info.empId) || { fio: info.emp.short, short: info.emp.short };
+function buildMessage(info) {
+  const fio = D.employees.find((x) => x.id === info.empId)?.fio || info.emp?.fio || info.emp?.short || '';
   const place = (() => {
     const { ordered, head } = buildRanking();
     if (head && head.id === info.empId) return 'вне очереди (руководитель)';
@@ -1019,13 +1062,14 @@ function buildMessage(info, tokenInfo) {
   const exp = info.expiresAt ? fmtDateRu(info.expiresAt) : '—';
   const link = baseUrl() + 'pick.html#t=' + info.token;
   const cycleText = info.cycle === 1
-    ? `один период ${info.minDays}–${info.maxDays} календарных дней`
-    : `остаток ${info.minDays}–${info.maxDays} дней (можно несколькими периодами, минимум 3 дня каждый)`;
-  return `Здравствуйте, ${e.fio.split(' ')[1] || ''} ${e.fio.split(' ')[2] || ''}!
+    ? `Ваша очередь выбора — ${place}.\n\nВыберите один период на ${info.minDays}–${info.maxDays} календарных дней.`
+    : 'Распределите весь остаток из 28 дней отпуска. Можно выбрать несколько периодов по 3–14 дней каждый. Добавляйте периоды, пока остаток в форме не станет равен нулю, затем отправьте выбор.';
+  const firstName = fio.split(' ').slice(1).join(' ');
+  return `Здравствуйте${firstName ? ', ' + firstName : ''}!
 
-Составляем график отпусков на 2027 год. Ваша очередь выбора — ${place}.
+Составляем график отпусков на 2027 год.
 
-Что выбрать: ${cycleText}.
+${cycleText}
 Разрешённые месяцы: ${months}.${info.comment ? '\nКомментарий: ' + info.comment : ''}
 ${info.forbiddenPeriods && info.forbiddenPeriods.length ? '\nЗапрещённые даты: ' + info.forbiddenPeriods.map(p => fmtRange(p.start, p.end)).join('; ') + '.\n' : ''}
 
@@ -1075,7 +1119,7 @@ async function renderTokens() {
     return `<tr>
       <td><b>${escapeHtml(emp.short)}</b></td>
       <td class="muted">${t.cycle === 1 ? 'осн.' : 'остаток'}</td>
-      <td class="muted" style="font-size:11.5px">${t.minDays}–${t.maxDays} дн.<br>${months}</td>
+      <td class="muted" style="font-size:11.5px">${t.cycle === 1 ? `${t.minDays}–${t.maxDays} дн.` : '3–14 дн. за период'}<br>${months}</td>
       <td class="num muted">${fmtDateRu(t.expiresAt)}</td>
       <td><span class="badge ${cls}">${st}</span></td>
       <td class="muted" style="font-size:11.5px">${sel}</td>
@@ -1090,7 +1134,7 @@ async function renderTokens() {
 
   $$('[data-copy]').forEach((b) => b.addEventListener('click', () => {
     const t = tokensCache.find((x) => x.token === b.dataset.copy);
-    const msg = buildMessage({ ...t, token: t.token }, t);
+    const msg = buildMessage(t);
     showMessage(msg);
     copyText(msg);
   }));
@@ -1122,8 +1166,9 @@ async function copyText(text) {
 async function issueAccess() {
   if (!apiOnline) return toast('Сначала запустите server/app.py', true);
   const empId = $('#accessEmp').value;
-  const min = parseInt($('#accessMin').value, 10) || 14;
-  const max = parseInt($('#accessMax').value, 10) || 21;
+  const secondCycle = accessForm.cycle === 2;
+  const min = secondCycle ? 3 : parseInt($('#accessMin').value, 10) || 14;
+  const max = secondCycle ? 28 : parseInt($('#accessMax').value, 10) || 21;
   const months = accessForm.months || [];
   const forbiddenPeriods = $$('#blockedPeriods .blocked-row').map(row => ({start: row.querySelector('[data-start]').value, end: row.querySelector('[data-end]').value}));
   if (!months.length) return toast('Выберите хотя бы один разрешённый месяц', true);
@@ -1141,7 +1186,7 @@ async function issueAccess() {
     const info = { empId, cycle: accessForm.cycle, minDays: min, maxDays: max, months, forbiddenPeriods,
       expiresAt: data.expiresAt, comment: $('#accessComment').value || '',
       token: data.token, emp: (D.employees.find((x) => x.id === empId) || {}) };
-    showMessage(buildMessage(info, data));
+    showMessage(buildMessage(info));
     await renderTokens();
     toast('Ссылка создана');
   } catch (e) {
@@ -1246,6 +1291,7 @@ function download(name, text, mime = 'application/json') {
 
 /* ------------------------------------------------------------------- общее */
 function renderAll() {
+  $('#employeeControls').hidden = !apiOnline;
   renderFacts();
   renderPriority();
   renderSelect();
@@ -1260,6 +1306,7 @@ function renderAll() {
 }
 
 function bindUi() {
+  $('#addEmployeeForm').addEventListener('submit', addEmployee);
   // табы
   $$('#tabs .tab').forEach((b) => b.addEventListener('click', () => {
     state.tab = b.dataset.tab;
@@ -1392,7 +1439,7 @@ renderAll();
 updateCalc();
 
 // проверяем API персональных ссылок и перерисовываем блок доступов
-checkApi().then(() => renderAccess());
+checkApi().then(() => renderAll());
 
 // первичная анимация кольца
 setTimeout(() => {
