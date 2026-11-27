@@ -749,12 +749,23 @@ function renderTable() {
         <td><span class="badge ${x.status === 'confirmed' ? 'ok' : (bad ? 'bad' : 'draft')}">${x.status === 'confirmed' ? 'утверждён' : 'черновик'}</span></td>
         <td style="text-align:right">${x.status === 'confirmed' && window.APP_CLOUD_STATE
           ? `<button class="ghost" data-unconfirm="${escapeHtml(x.id)}">Снять утверждение</button>`
-          : `<button class="del" data-del="${escapeHtml(x.id)}" title="Удалить" aria-label="Удалить период">×</button>`}</td>
+          : ''}
+          <button class="ghost danger" data-del="${escapeHtml(x.id)}">Удалить период</button>
+        </td>
       </tr>`;
     }).join('');
   }
-  $$('#entriesTable .del').forEach((b) => b.addEventListener('click', () => {
-    state.entries = state.entries.filter((x) => x.id !== b.dataset.del);
+  $$('#entriesTable [data-del]').forEach((b) => b.addEventListener('click', async () => {
+    const entry = state.entries.find((x) => x.id === b.dataset.del);
+    const employee = byId[entry.empId];
+    if (!window.confirm(`Удалить период ${fmtRange(entry.start, entry.end)} из графика сотрудника «${employee?.short || entry.empId}»?`)) return;
+    if (window.APP_CLOUD_STATE) {
+      b.disabled = true;
+      try { await window.cloudBridge.deletePeriod(entry.id); }
+      catch (e) { b.disabled = false; toast(e.message || 'Не удалось удалить период', true); }
+      return;
+    }
+    state.entries = state.entries.filter((x) => x.id !== entry.id);
     saveState(); renderAll(); toast('Период удалён');
   }));
   $$('#entriesTable [data-unconfirm]').forEach((b) => b.addEventListener('click', async () => {

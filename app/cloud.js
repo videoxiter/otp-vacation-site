@@ -185,6 +185,9 @@
     async unconfirm(entryId) {
       return changeAndReload('unconfirm_vacation_period', { entry_id: entryId });
     },
+    async deletePeriod(entryId) {
+      return changeAndReload('delete_vacation_period', { entry_id: entryId });
+    },
     async discardSelection(invitationId) {
       return changeAndReload('discard_vacation_selection', { p_id: invitationId });
     },
